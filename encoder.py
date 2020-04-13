@@ -4,28 +4,28 @@ import numpy as np
 
 def determineNumBits(stringLength):
     lowerK = int(math.ceil(math.log(stringLength,2)))
-    print(lowerK)
+    #print(lowerK)
 
     while 2**lowerK < stringLength + lowerK + 1:
-        print("doing it ")
+        #print("doing it ")
         lowerK += 1
     
     return lowerK
 
 def encoder(bitString):
-    print(len(bitString))
+    #print(len(bitString))
 
     numParityBits = determineNumBits(len(bitString))
     bitStringList = list(bitString)
     for i in range(numParityBits):
         bitStringList.insert((2**i)-1,'p'+str(i+1))
 
-    print(bitStringList)
+    #print(bitStringList)
 
     def evaluateParity(p_index, space):
 
-        print("space " + str(space))
-        print("pindex " + str(p_index))
+        #print("space " + str(space))
+        #print("pindex " + str(p_index))
         counter = p_index
         parity = True
         skip = False
@@ -50,15 +50,24 @@ def encoder(bitString):
         totalLength = len(bitStringList)
         bitStringList[indexOfParity] = "0" if evaluateParity(indexOfParity,spacing) else "1"
     toPrintFinal = "".join(bitStringList)
-    toPrintList = []
+    parityBitsList = []
+
     for i in range(numParityBits):
         indexOfParity = (2**i)-1
-        toPrintList.append(bitStringList[indexOfParity])
-    print(toPrintFinal)
-    print(toPrintList)
+        parityBitsList.append(bitStringList[indexOfParity])
+
+    returnBitString = toPrintFinal
+    #print("this is the count of 1's" + str(bitStringList.count("1")))
+    returnOverallParityBit = "1" if (bitStringList.count("1")%2==1) else "0"
+
+    #print("encoded hamming string " + returnBitString)
+    #print("overall parity bit " + returnOverallParityBit)
+    #print("list of parity bits without overall " + str(parityBitsList))
+
+    return [returnBitString,returnOverallParityBit, parityBitsList]
 
 
-def decoder(encodedString):
+def decoder(encodedString, overallParity):
     numParityBits =  int(math.ceil(math.log(len(encodedString),2)))
     matrix_H = createHMatrix(numParityBits,len(encodedString))
     matrix_r = createRMatrix(encodedString)
@@ -67,22 +76,29 @@ def decoder(encodedString):
     for i in range(len(matrix_parity)):
         x = matrix_parity.item(i)
         parity_list.append(x%2)
-    myBadBit = determineBadBit(parity_list)
-    if myBadBit:
-        print("there was an error at location " + str(myBadBit))
-        newString = encodedString[0:myBadBit-1] + ("0" if encodedString[myBadBit-1] == "1" else "1") + encodedString[myBadBit:]
-        print(encodedString[0:myBadBit-1])
-        print(encodedString)
-        print(newString)
-        return newString
-    print("no error occurred")
-    return(encodedString)
-    #print(parity_list)
-    #print(matrix_parity)
 
-# What is it mean if one of the parity bits is messed up?
-# Convert a encoded and corrected string back to just the bare corrected string
-# Double error detecting?
+    myBadBit = determineBadBit(parity_list)
+
+    doubleError = determineDoubleError(encodedString,overallParity,myBadBit)
+    if doubleError:
+        #print("Two errors detected, abort this bit string")
+        return [True, False, encodedString, None, None]
+
+    if myBadBit:
+        #print("there was an error at location " + str(myBadBit))
+        newString = encodedString[0:myBadBit-1] + ("0" if encodedString[myBadBit-1] == "1" else "1") + encodedString[myBadBit:]
+        #print("original bad string: " + encodedString)
+        #print("corrected string: " + newString)
+        recoveredMessage = recoverOriginalMessage(newString, numParityBits)
+        #print("recovered message: " + recoveredMessage)
+        return [False, True , newString, recoveredMessage, myBadBit]
+
+    #print("no error occurred")
+    #print("original and correct string: " + encodedString)
+    recoveredMessage = recoverOriginalMessage(encodedString, numParityBits)
+    #print("recovered message: " + recoveredMessage)
+    return [False, False, encodedString, recoveredMessage, None]
+
 # Simulator for wrong issues. 
 
 
@@ -90,17 +106,35 @@ def determineBadBit(parityList):
     parityList = parityList[::-1]
     bitstring = "".join([str(x) for x in parityList])
     decimalLocation = int(bitstring,2)
-    print(decimalLocation)
+    #print("decimal location of bad bit: " + str(decimalLocation))
     return decimalLocation
 
 
+def recoverOriginalMessage(encryptedString, k_num_parity_bits):
+    encryptedList = list(encryptedString)
+    indicesOfParity = set()
+    for i in range(k_num_parity_bits):
+        indicesOfParity.add((2**i)-1)
+    recoveredList = [x for ind,x in enumerate(encryptedList) if ind not in indicesOfParity]
+    recoveredString = "".join(recoveredList)
+    #print("recovered string: " + recoveredString)
+    return recoveredString
+    
 
+def determineDoubleError(hamString, parity_bit, badbit):
+    counter = 0
+    if parity_bit == "1":
+        counter += 1
+    counter += list(hamString).count("1")
+    overallParity = True if counter%2 == 0 else False
+    doubleError = overallParity and (badbit > 0)
+    return doubleError
 
 def createHMatrix(num_parity, lengthOfString):
     listOfLists = []
 
     for i in range(num_parity):
-        print("hi")
+        #print("hi")
         tempList = []
         indexOfParity = (2**i)-1
         spacing = 2**i
@@ -120,8 +154,8 @@ def createHMatrix(num_parity, lengthOfString):
         listOfLists.append(tempList)
     
     a = np.matrix(listOfLists)
-    print(a)
-    print(listOfLists)
+    #print(a)
+    #print(listOfLists)
     return(a)
     
 def createRMatrix(hammingString):
@@ -130,60 +164,7 @@ def createRMatrix(hammingString):
         x = [int(i)]
         listOfLists.append(x)
     a = np.matrix(listOfLists)
-    print(a)
+    #print(a)
     return a
 
 
-    
-#createRMatrix("10101010101010")
-decoder('0100011')
-
-def test():
-    if 1:
-        print("hihi")
-    
-test()
-
-        
-            
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
-
-
-
-
-
-
-
-    #toPrint  = "".join(bitStringList)
-    #print(toPrint)
-
-
-
-#encoder("100010100110000110100111")
-#encoder("01010101010101010101010101010101")
-
-
-
-    
-
-
-
-
-# determineNumBits(244)
-# determineNumBits(32)
-# determineNumBits(100)
-    
